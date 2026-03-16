@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — CMES Solar Plant Dashboard</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh;
+           background: var(--navy-950); overflow: hidden; }
+
+    .bg-grid {
+      position: fixed; inset: 0; pointer-events: none;
+      background-image: linear-gradient(var(--border) 1px, transparent 1px),
+                        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.5;
+    }
+    .bg-glow {
+      position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+      width: 800px; height: 600px;
+      background: radial-gradient(ellipse, rgba(6,182,212,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .bg-glow-2 {
+      position: fixed; bottom: -200px; right: -100px;
+      width: 500px; height: 500px;
+      background: radial-gradient(ellipse, rgba(245,158,11,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .login-wrap {
+      position: relative; z-index: 10;
+      width: 100%; max-width: 400px;
+      padding: 1rem;
+      animation: fadeInUp 0.5s ease forwards;
+    }
+
+    .login-header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    .login-logo {
+      display: inline-flex; align-items: center; gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .login-logo-icon {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg, var(--cyan-500), var(--amber-400));
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 0 30px rgba(6,182,212,0.3);
+    }
+    .login-logo-text {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .login-logo-text span { color: var(--cyan-400); }
+
+    .login-tagline {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    .login-card {
+      background: var(--navy-800);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2.5rem;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+      position: relative;
+      overflow: hidden;
+    }
+    .login-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--cyan-500), var(--amber-400), var(--cyan-500));
+    }
+
+    .login-subtitle {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+    .login-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+    }
+
+    .form-input-wrap { position: relative; }
+    .form-input-icon {
+      position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+      color: var(--text-muted); font-size: 15px;
+    }
+    .login-card .form-input { padding-left: 38px; }
+    .form-input-pw-toggle {
+      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; font-size: 14px; padding: 0;
+    }
+    .form-input-pw-toggle:hover { color: var(--text-primary); }
+
+    .login-btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, var(--cyan-600), var(--cyan-500));
+      border: none;
+      border-radius: var(--radius-sm);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: var(--font-display);
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 0.5rem;
+      letter-spacing: 0.02em;
+      box-shadow: 0 4px 20px rgba(6,182,212,0.25);
+    }
+    .login-btn:hover { background: linear-gradient(135deg, var(--cyan-500), var(--cyan-400)); transform: translateY(-1px); }
+    .login-btn:active { transform: translateY(0); }
+    .login-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .error-msg {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.25);
+      color: var(--red-400);
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      margin-bottom: 1rem;
+      display: none;
+    }
+
+    .demo-creds {
+      background: var(--navy-700);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+      margin-top: 1.5rem;
+    }
+    .demo-creds-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+    .demo-cred-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      border-top: 1px solid var(--border);
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .demo-cred-row:hover { opacity: 0.75; }
+    .demo-cred-row:first-of-type { border-top: none; }
+    .demo-cred-name {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .login-footer {
+      text-align: center;
+      margin-top: 1.5rem;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow"></div>
+  <div class="bg-glow-2"></div>
+
+  <div class="login-wrap">
+    <div class="login-header">
+      <div class="login-logo">
+        <div class="login-logo-icon">☀️</div>
+        <div>
+          <div class="login-logo-text">CMES<span>Solar</span></div>
+          <div class="login-tagline">Performance Analytics Platform</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="login-card">
+      <h2 class="login-subtitle">Welcome back</h2>
+      <p class="login-desc">Sign in to access your plant dashboard</p>
+
+      <div class="error-msg" id="errorMsg"></div>
+
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <div class="form-input-wrap">
+          <span class="form-input-icon">👤</span>
+          <input type="text" id="username" class="form-input" placeholder="Enter username" autocomplete="username">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <div class="form-input-wrap">
+          <span class="form-input-icon">🔑</span>
+          <input type="password" id="password" class="form-input" placeholder="Enter password" autocomplete="current-password">
+          <button class="form-input-pw-toggle" onclick="togglePw()" id="pwToggle">👁</button>
+        </div>
+      </div>
+
+      <button class="login-btn" id="loginBtn" onclick="doLogin()">Sign In →</button>
+
+      <div class="demo-creds">
+        <div class="demo-creds-title">Quick Login (Demo)</div>
+        <div class="demo-cred-row" onclick="fillCreds('admin','Admin@2026')">
+          <span class="demo-cred-name">admin</span>
+          <span class="nav-role-badge badge-admin">Admin</span>
+        </div>
+        <div class="demo-cred-row" onclick="fillCreds('manager','Manager@2026')">
+          <span class="demo-cred-name">manager</span>
+          <span class="nav-role-badge badge-manager">Manager</span>
+        </div>
+        <div class="demo-cred-row" onclick="fillCreds('analyst','Analyst@2026')">
+          <span class="demo-cred-name">analyst</span>
+          <span class="nav-role-badge badge-analyst">Analyst</span>
+        </div>
+        <div class="demo-cred-row" onclick="fillCreds('viewer','Viewer@2026')">
+          <span class="demo-cred-name">viewer</span>
+          <span class="nav-role-badge badge-viewer">Viewer</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="login-footer">
+      CMES Solar Plant Performance Dashboard &copy; 2026<br>
+      Secured with role-based access control
+    </div>
+  </div>
+
+  <script src="assets/auth.js"></script>
+  <script>
+    // Redirect if already logged in
+    if (Auth.getSession()) window.location.href = 'dashboard.html';
+
+    function doLogin() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const btn = document.getElementById('loginBtn');
+      const err = document.getElementById('errorMsg');
+
+      if (!username || !password) {
+        showError('Please enter both username and password.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Signing in…';
+      err.style.display = 'none';
+
+      setTimeout(() => {
+        const result = Auth.login(username, password);
+        if (result.success) {
+          window.location.href = 'dashboard.html';
+        } else {
+          showError(result.error);
+          btn.disabled = false;
+          btn.textContent = 'Sign In →';
+        }
+      }, 600);
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('errorMsg');
+      el.textContent = '⚠ ' + msg;
+      el.style.display = 'block';
+    }
+
+    function togglePw() {
+      const inp = document.getElementById('password');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    }
+
+    function fillCreds(u, p) {
+      document.getElementById('username').value = u;
+      document.getElementById('password').value = p;
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+    });
+  </script>
+</body>
+</html>

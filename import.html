@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Import — CMES Solar Plant</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    .import-log {
+      background: var(--navy-950);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .log-entry { padding: 3px 0; border-top: 1px solid rgba(255,255,255,0.03); }
+    .log-ts { color: var(--text-muted); margin-right: 8px; }
+    .log-ok  { color: var(--green-400); }
+    .log-warn { color: var(--amber-400); }
+    .log-err { color: var(--red-400); }
+    .log-info { color: var(--cyan-400); }
+
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 0.75rem;
+      margin: 1rem 0;
+    }
+    .preview-stat {
+      background: var(--navy-700);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem;
+      text-align: center;
+    }
+    .preview-stat-val { font-family: var(--font-mono); font-size: 18px; color: var(--cyan-400); }
+    .preview-stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; }
+
+    .month-list { display: grid; gap: 0.5rem; }
+    .month-item {
+      background: var(--navy-700);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.875rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .month-key { font-family: var(--font-mono); font-size: 14px; font-weight: 600; }
+    .month-meta { font-size: 12px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  <header class="topbar">
+    <div class="topbar-logo">
+      <div class="logo-icon">☀️</div>
+      <div class="logo-text">CMES<span>Solar</span></div>
+    </div>
+    <button class="hamburger" onclick="toggleSidebar()">☰</button>
+    <div class="topbar-center"><div class="topbar-title">Data Import</div></div>
+    <div class="topbar-right" id="userBadge"></div>
+  </header>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-section-title">Navigation</div>
+    <a href="dashboard.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+    <a href="reports.html"   class="nav-item"><span class="nav-icon">📋</span> Reports</a>
+    <a href="import.html"    class="nav-item active"><span class="nav-icon">📥</span> Data Import</a>
+    <a href="admin.html"     class="nav-item" id="navAdmin"><span class="nav-icon">⚙️</span> Admin</a>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header fade-in">
+      <h1 class="page-title">Data Import & Update</h1>
+      <p class="page-subtitle">Upload monthly data files — auto-detect if new or update existing</p>
+    </div>
+
+    <div class="chart-grid chart-grid-2">
+
+      <!-- Upload Zone -->
+      <div class="chart-container fade-in">
+        <div class="chart-title" style="font-family:var(--font-display);font-size:16px;font-weight:700;margin-bottom:1.25rem;">📤 Upload Data File</div>
+
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()"
+             ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+          <div class="upload-icon">📁</div>
+          <div class="upload-title">Drop file here or click to browse</div>
+          <div class="upload-subtitle">Supports: CSV, JSON, XLSX · Max 20MB</div>
+          <div style="margin-top:1rem;font-size:11px;color:var(--text-muted);">
+            Expected columns: date, name, Capacity, Performance
+          </div>
+        </div>
+        <input type="file" id="fileInput" accept=".csv,.json,.xlsx,.xls" style="display:none" onchange="handleFileInput(event)">
+
+        <div style="margin-top:1rem;">
+          <label class="form-label">Month Key (auto-detected)</label>
+          <input type="text" class="form-input" id="monthKey" placeholder="e.g. 2026-03" readonly>
+          <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Derived from the earliest date in the dataset</p>
+        </div>
+
+        <div style="margin-top:1rem;display:flex;gap:0.5rem;">
+          <button class="btn btn-primary" id="importBtn" onclick="commitImport()" disabled>✓ Commit Import</button>
+          <button class="btn btn-secondary" onclick="clearImport()">✕ Clear</button>
+        </div>
+      </div>
+
+      <!-- Preview + Log -->
+      <div style="display:flex;flex-direction:column;gap:1rem;">
+        <div class="chart-container fade-in fade-in-delay-1" id="previewBox" style="display:none;">
+          <div class="chart-title" style="font-family:var(--font-display);font-size:15px;font-weight:700;margin-bottom:1rem;">📊 File Preview</div>
+          <div class="preview-grid" id="previewStats"></div>
+          <div class="data-table-wrap" style="max-height:200px;overflow-y:auto;">
+            <table class="data-table" id="previewTable">
+              <thead><tr id="previewHead"></tr></thead>
+              <tbody id="previewBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="chart-container fade-in fade-in-delay-2">
+          <div class="chart-title" style="font-family:var(--font-display);font-size:15px;font-weight:700;margin-bottom:1rem;">📋 Import Log</div>
+          <div class="import-log" id="importLog">
+            <div class="log-entry"><span class="log-ts">--:--:--</span><span class="log-info">System ready. Waiting for file upload...</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Master Dataset -->
+    <div class="chart-container fade-in" style="margin-top:1rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:1rem;">
+        <div>
+          <div class="chart-title" style="font-family:var(--font-display);font-size:16px;font-weight:700;">🗄 Master Dataset</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">All imported months stored in local dataset</div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+          <button class="btn btn-secondary btn-sm" onclick="exportMaster()">⬇ Export Master</button>
+          <button class="btn btn-danger btn-sm" onclick="clearMaster()">🗑 Clear All</button>
+        </div>
+      </div>
+
+      <div class="alert alert-info" style="margin-bottom:1rem;">
+        ℹ The master dataset merges all imported months. If a month already exists, importing will <strong>update</strong> existing data. New months are <strong>appended</strong>. The original plant data (Mar 2026) is always available.
+      </div>
+
+      <div class="month-list" id="monthList">
+        <div style="text-align:center;padding:2rem;color:var(--text-muted);font-size:13px;">
+          No imported months yet. Upload a file to get started.
+        </div>
+      </div>
+    </div>
+
+    <!-- Format Guide -->
+    <div class="chart-container fade-in" style="margin-top:1rem;">
+      <div class="chart-title" style="font-family:var(--font-display);font-size:15px;font-weight:700;margin-bottom:1rem;">📖 Expected File Format</div>
+      <div class="chart-grid chart-grid-2">
+        <div>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:0.75rem;">CSV/Excel files should contain these columns:</p>
+          <table class="data-table">
+            <thead><tr><th>Column</th><th>Type</th><th>Example</th><th>Required</th></tr></thead>
+            <tbody>
+              <tr><td style="color:var(--cyan-400)">date</td><td>Date</td><td>2026-03-09</td><td><span class="pill pill-bad">Yes</span></td></tr>
+              <tr><td style="color:var(--cyan-400)">name</td><td>String</td><td>CMES-PR018-I01-M06-PV12</td><td><span class="pill pill-bad">Yes</span></td></tr>
+              <tr><td>label</td><td>String</td><td>Same as name</td><td><span class="pill pill-good">Optional</span></td></tr>
+              <tr><td>Capacity</td><td>Float</td><td>15.66</td><td><span class="pill pill-good">Optional</span></td></tr>
+              <tr><td>String Tilt</td><td>Float</td><td>30.0</td><td><span class="pill pill-good">Optional</span></td></tr>
+              <tr><td style="color:var(--cyan-400)">Performance</td><td>Float (0–1)</td><td>0.89</td><td><span class="pill pill-bad">Yes</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:0.75rem;">JSON format (array of objects):</p>
+          <div class="import-log" style="max-height:none;">
+            <pre style="color:var(--cyan-400);font-size:11px;white-space:pre-wrap;">[
+  {
+    "date": "2026-04-01",
+    "name": "CMES-PR018-I01-M01-PV01",
+    "label": "CMES-PR018-I01-M01-PV01",
+    "Capacity": 15.66,
+    "Performance": 0.91
+  },
+  ...
+]</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="assets/auth.js"></script>
+<script src="assets/data.js"></script>
+<script>
+  const session = Auth.requireAuth();
+  Auth.requirePermission('import');
+  renderUserBadge('userBadge');
+  if (!Auth.can('admin')) document.getElementById('navAdmin').style.display = 'none';
+
+  function toggleSidebar() { document.getElementById('sidebar').classList.toggle('mobile-open'); }
+
+  let parsedData = null;
+  let detectedMonth = null;
+
+  function log(msg, type = 'info') {
+    const el = document.getElementById('importLog');
+    const ts = new Date().toLocaleTimeString('en-US', {hour12: false});
+    el.innerHTML += `<div class="log-entry"><span class="log-ts">${ts}</span><span class="log-${type}">${msg}</span></div>`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function handleDragOver(e) { e.preventDefault(); document.getElementById('uploadZone').classList.add('drag-over'); }
+  function handleDragLeave(e) { document.getElementById('uploadZone').classList.remove('drag-over'); }
+  function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('uploadZone').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) processFile(file);
+  }
+  function handleFileInput(e) {
+    const file = e.target.files[0];
+    if (file) processFile(file);
+  }
+
+  function processFile(file) {
+    log(`Reading file: ${file.name} (${(file.size/1024).toFixed(1)} KB)`, 'info');
+    const ext = file.name.split('.').pop().toLowerCase();
+
+    if (ext === 'csv') {
+      Papa.parse(file, {
+        header: true, skipEmptyLines: true,
+        complete: res => { log(`Parsed ${res.data.length} rows from CSV`, 'ok'); processRows(res.data, file.name); },
+        error: err => log('CSV parse error: ' + err.message, 'err')
+      });
+    } else if (ext === 'json') {
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const data = JSON.parse(e.target.result);
+          const rows = Array.isArray(data) ? data : data.data || data.rows || [];
+          log(`Parsed ${rows.length} rows from JSON`, 'ok');
+          processRows(rows, file.name);
+        } catch(err) { log('JSON parse error: ' + err.message, 'err'); }
+      };
+      reader.readAsText(file);
+    } else if (['xlsx','xls'].includes(ext)) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const wb = XLSX.read(e.target.result, {type:'binary', cellDates: true});
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws);
+          log(`Parsed ${rows.length} rows from Excel (sheet: ${wb.SheetNames[0]})`, 'ok');
+          processRows(rows, file.name);
+        } catch(err) { log('Excel parse error: ' + err.message, 'err'); }
+      };
+      reader.readAsBinaryString(file);
+    } else {
+      log(`Unsupported file type: .${ext}`, 'err');
+    }
+  }
+
+  function processRows(rows, filename) {
+    if (!rows || rows.length === 0) { log('No data rows found in file', 'err'); return; }
+
+    // Validate required columns
+    const required = ['date', 'name', 'Performance'];
+    const firstRow = rows[0];
+    const missing = required.filter(col => !(col in firstRow));
+    if (missing.length > 0) {
+      log(`Missing required columns: ${missing.join(', ')}`, 'err');
+      return;
+    }
+
+    // Detect month from earliest date
+    const dates = rows.map(r => r.date).filter(Boolean).map(d => {
+      if (d instanceof Date) return d.toISOString().slice(0,10);
+      return String(d).slice(0,10);
+    });
+    const earliest = dates.sort()[0];
+    detectedMonth = earliest ? earliest.slice(0,7) : null;
+
+    parsedData = rows;
+
+    // Check if month exists
+    const dataset = MasterDataset.load();
+    const exists = detectedMonth && !!dataset.months[detectedMonth];
+
+    log(`Detected month: ${detectedMonth || 'Unknown'}`, 'info');
+    if (exists) log(`⚠ Month ${detectedMonth} already exists — will UPDATE existing data`, 'warn');
+    else log(`Month ${detectedMonth} is new — will APPEND to master dataset`, 'ok');
+
+    document.getElementById('monthKey').value = detectedMonth || '';
+
+    // Preview
+    showPreview(rows);
+    document.getElementById('importBtn').disabled = false;
+  }
+
+  function showPreview(rows) {
+    const box = document.getElementById('previewBox');
+    box.style.display = 'block';
+
+    // Stats
+    const perfs = rows.map(r => parseFloat(r.Performance)).filter(v => !isNaN(v));
+    const avg = perfs.length ? (perfs.reduce((a,b)=>a+b,0)/perfs.length*100).toFixed(1) : '—';
+    const devices = new Set(rows.map(r => r.name)).size;
+    const stats = [
+      { val: rows.length.toLocaleString(), label: 'Rows' },
+      { val: devices.toLocaleString(), label: 'Devices' },
+      { val: avg + '%', label: 'Avg Perf' },
+      { val: [...new Set(rows.map(r => String(r.date).slice(0,10)))].length, label: 'Days' }
+    ];
+    document.getElementById('previewStats').innerHTML = stats.map(s =>
+      `<div class="preview-stat"><div class="preview-stat-val">${s.val}</div><div class="preview-stat-label">${s.label}</div></div>`
+    ).join('');
+
+    // Table
+    const cols = Object.keys(rows[0]).slice(0,6);
+    document.getElementById('previewHead').innerHTML = cols.map(c => `<th>${c}</th>`).join('');
+    document.getElementById('previewBody').innerHTML = rows.slice(0,8).map(row =>
+      `<tr>${cols.map(c => `<td>${String(row[c] ?? '').slice(0,30)}</td>`).join('')}</tr>`
+    ).join('');
+  }
+
+  function commitImport() {
+    if (!parsedData || !detectedMonth) { log('No data to import', 'err'); return; }
+
+    const action = MasterDataset.upsert(detectedMonth, parsedData);
+    log(`✓ Month ${detectedMonth} successfully ${action.toUpperCase()} in master dataset (${parsedData.length} rows)`, 'ok');
+
+    const dataset = MasterDataset.load();
+    log(`Master dataset now contains ${Object.keys(dataset.months).length} month(s)`, 'info');
+
+    renderMonthList();
+    document.getElementById('importBtn').disabled = true;
+    parsedData = null;
+
+    // Show confirmation
+    const btn = document.getElementById('importBtn');
+    btn.textContent = '✓ Imported!';
+    btn.style.background = 'var(--green-400)';
+    setTimeout(() => { btn.textContent = '✓ Commit Import'; btn.style.background = ''; btn.disabled = true; }, 3000);
+  }
+
+  function clearImport() {
+    parsedData = null; detectedMonth = null;
+    document.getElementById('fileInput').value = '';
+    document.getElementById('monthKey').value = '';
+    document.getElementById('previewBox').style.display = 'none';
+    document.getElementById('importBtn').disabled = true;
+    log('Import cleared', 'info');
+  }
+
+  function renderMonthList() {
+    const dataset = MasterDataset.load();
+    const months = Object.keys(dataset.months).sort();
+    const container = document.getElementById('monthList');
+
+    if (months.length === 0) {
+      container.innerHTML = `<div style="text-align:center;padding:2rem;color:var(--text-muted);font-size:13px;">No imported months yet. Upload a file to get started.</div>`;
+      return;
+    }
+
+    container.innerHTML = months.map(key => {
+      const m = dataset.months[key];
+      const rowCount = m.rows?.length?.toLocaleString() || '?';
+      const uploadedAt = m.uploadedAt ? new Date(m.uploadedAt).toLocaleString() : '—';
+      return `<div class="month-item">
+        <div>
+          <div class="month-key">${key}</div>
+          <div class="month-meta">📅 Imported: ${uploadedAt} · 📊 ${rowCount} rows</div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+          <span class="pill pill-good">Imported</span>
+          <button class="btn btn-danger btn-sm" onclick="removeMonth('${key}')">Remove</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function removeMonth(key) {
+    const dataset = MasterDataset.load();
+    delete dataset.months[key];
+    MasterDataset.save(dataset);
+    log(`Month ${key} removed from master dataset`, 'warn');
+    renderMonthList();
+  }
+
+  function exportMaster() {
+    const dataset = MasterDataset.load();
+    const months = Object.keys(dataset.months);
+    if (months.length === 0) { log('No data to export', 'warn'); return; }
+
+    let csv = 'month,rows,importedAt\n';
+    months.forEach(key => {
+      const m = dataset.months[key];
+      csv += `${key},${m.rows?.length || 0},${m.uploadedAt}\n`;
+    });
+    const blob = new Blob([csv], {type:'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'cmes_master_dataset_index.csv';
+    a.click();
+    log('Master dataset index exported', 'ok');
+  }
+
+  function clearMaster() {
+    if (!confirm('Clear all imported months? This cannot be undone.')) return;
+    MasterDataset.save({ months: {}, lastUpdated: new Date().toISOString() });
+    log('Master dataset cleared', 'warn');
+    renderMonthList();
+  }
+
+  renderMonthList();
+</script>
+</body>
+</html>
