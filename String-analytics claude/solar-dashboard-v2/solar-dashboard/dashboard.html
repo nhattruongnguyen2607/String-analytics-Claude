@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — CMES Solar Plant</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-logo">
+      <div class="logo-icon">☀️</div>
+      <div class="logo-text">CMES<span>Solar</span></div>
+    </div>
+    <button class="hamburger" onclick="toggleSidebar()">☰</button>
+    <div class="topbar-center">
+      <div class="topbar-title">Performance Analytics</div>
+    </div>
+    <div class="topbar-right" id="userBadge"></div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-section-title">Navigation</div>
+    <a href="dashboard.html" class="nav-item active"><span class="nav-icon">📊</span> Dashboard</a>
+    <a href="reports.html"   class="nav-item"><span class="nav-icon">📋</span> Reports</a>
+    <a href="import.html"    class="nav-item" id="navImport"><span class="nav-icon">📥</span> Data Import</a>
+    <a href="admin.html"     class="nav-item" id="navAdmin"><span class="nav-icon">⚙️</span> Admin</a>
+
+    <div class="sidebar-filters">
+      <div class="sidebar-section-title" style="padding:0;margin-bottom:0.75rem;">Filters</div>
+
+      <label class="filter-label">Plant</label>
+      <select class="filter-select" id="filterPlant" onchange="applyFilters()">
+        <option value="all">All Plants (30)</option>
+      </select>
+
+      <label class="filter-label">Date Range</label>
+      <select class="filter-select" id="filterDate" onchange="applyFilters()">
+        <option value="all">All Days</option>
+        <option value="2026-03-09">Mar 09</option>
+        <option value="2026-03-10">Mar 10</option>
+        <option value="2026-03-11">Mar 11</option>
+        <option value="2026-03-12">Mar 12</option>
+        <option value="2026-03-13">Mar 13</option>
+        <option value="2026-03-14">Mar 14</option>
+        <option value="2026-03-15">Mar 15</option>
+      </select>
+
+      <label class="filter-label">Inverter</label>
+      <select class="filter-select" id="filterInverter" onchange="applyFilters()">
+        <option value="all">All Inverters</option>
+      </select>
+
+      <label class="filter-label">Performance Threshold</label>
+      <input type="range" class="filter-select" style="padding:0;height:auto;background:none;border:none;"
+             id="filterThresh" min="0" max="100" value="80" oninput="updateThresh(this.value)">
+      <div class="filter-range-display" id="threshDisplay">≥ 80%</div>
+
+      <button class="btn btn-secondary btn-sm" style="width:100%" onclick="resetFilters()">Reset Filters</button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main-content">
+    <!-- Header -->
+    <div class="page-header fade-in">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+        <div>
+          <h1 class="page-title">Plant Dashboard</h1>
+          <p class="page-subtitle" id="pageSubtitle">CMES Solar Plant — All 30 Plants · Performance Overview</p>
+          <div class="date-badge" id="pageBadge"><span class="live-dot"></span> Mar 09–15, 2026 · 3,214 panels · 34 inverters</div>
+        </div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="window.location.href='reports.html'">📋 Reports</button>
+          <button class="btn btn-amber btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alert Banner -->
+    <div class="alert alert-warn fade-in fade-in-delay-1" id="alertBanner" style="display:none">
+      ⚠ <strong>Anomaly Detected:</strong> Performance dropped significantly on Mar 15 (avg 60.2%). Inverters I01–I19 showing reduced output. Investigate potential grid/weather event.
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid fade-in fade-in-delay-1" id="kpiGrid">
+      <div class="kpi-card accent-cyan">
+        <div class="kpi-icon">📈</div>
+        <div class="kpi-label">Weekly Avg Performance</div>
+        <div class="kpi-value" id="kpiAvg" style="color:var(--cyan-400)">—</div>
+        <div class="kpi-sub">Across all 3,214 panels</div>
+      </div>
+      <div class="kpi-card accent-red">
+        <div class="kpi-icon">⚠️</div>
+        <div class="kpi-label">Low Performers &lt;80%</div>
+        <div class="kpi-value" id="kpiLow" style="color:var(--red-400)">—</div>
+        <div class="kpi-sub" id="kpiLowSub">Anomaly rate —</div>
+      </div>
+      <div class="kpi-card accent-amber">
+        <div class="kpi-icon">📉</div>
+        <div class="kpi-label">Trend (7-day slope)</div>
+        <div class="kpi-value" id="kpiTrend" style="color:var(--amber-400)">—</div>
+        <div class="kpi-sub">Performance change / day</div>
+      </div>
+      <div class="kpi-card accent-green">
+        <div class="kpi-icon">⚡</div>
+        <div class="kpi-label">Best Inverter</div>
+        <div class="kpi-value" id="kpiBest" style="color:var(--green-400)">—</div>
+        <div class="kpi-sub" id="kpiBestSub">—</div>
+      </div>
+      <div class="kpi-card accent-orange">
+        <div class="kpi-icon">🔻</div>
+        <div class="kpi-label">Worst Inverter</div>
+        <div class="kpi-value" id="kpiWorst" style="color:var(--orange-400)">—</div>
+        <div class="kpi-sub" id="kpiWorstSub">—</div>
+      </div>
+    </div>
+
+    <!-- Trend Chart + Distribution -->
+    <div class="chart-grid chart-grid-2 fade-in fade-in-delay-2" style="margin-bottom:1rem;">
+      <div class="chart-container">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">Daily Performance Trend</div>
+            <div class="chart-subtitle">Plant average · min · max over 7 days</div>
+          </div>
+          <div id="trendChip"></div>
+        </div>
+        <div class="chart-canvas-wrap"><canvas id="trendChart" height="200"></canvas></div>
+      </div>
+      <div class="chart-container">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">Performance Distribution</div>
+            <div class="chart-subtitle">All 22,498 panel-day readings</div>
+          </div>
+        </div>
+        <div class="chart-canvas-wrap"><canvas id="distChart" height="200"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Low Performers + Inverter Bar -->
+    <div class="chart-grid chart-grid-2 fade-in fade-in-delay-3" style="margin-bottom:1rem;">
+      <div class="chart-container">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">Low Performers per Day</div>
+            <div class="chart-subtitle">Panels below 80% threshold</div>
+          </div>
+        </div>
+        <div class="chart-canvas-wrap"><canvas id="lowChart" height="200"></canvas></div>
+      </div>
+      <div class="chart-container">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">Inverter Performance</div>
+            <div class="chart-subtitle">Weekly average by inverter</div>
+          </div>
+        </div>
+        <div class="chart-canvas-wrap"><canvas id="invChart" height="200"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Heatmap -->
+    <div class="chart-container fade-in fade-in-delay-4" style="margin-bottom:1rem;">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">Inverter × Day Heatmap</div>
+          <div class="chart-subtitle">Average performance — hover for details</div>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;font-size:11px;color:var(--text-muted);">
+          <span style="background:#ef4444;width:12px;height:12px;border-radius:2px;display:inline-block;"></span> &lt;70%
+          <span style="background:#f59e0b;width:12px;height:12px;border-radius:2px;display:inline-block;"></span> 70–85%
+          <span style="background:#22c55e;width:12px;height:12px;border-radius:2px;display:inline-block;"></span> &gt;85%
+        </div>
+      </div>
+      <div id="heatmapContainer" style="overflow-x:auto;"></div>
+    </div>
+
+    <!-- Anomaly Table -->
+    <div class="chart-container fade-in fade-in-delay-4" style="margin-bottom:1rem;">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">⚠ Critical Panels</div>
+          <div class="chart-subtitle">20 lowest performing panels (weekly average)</div>
+        </div>
+      </div>
+      <div class="data-table-wrap" style="border:none;border-radius:0;">
+        <table class="data-table" id="anomalyTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Panel ID</th>
+              <th>Inverter</th>
+              <th>Module</th>
+              <th>Avg Performance</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="anomalyTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="assets/auth.js"></script>
+<script src="assets/data.js"></script>
+<script>
+  const session = Auth.requireAuth();
+  renderUserBadge('userBadge');
+  if (!Auth.can('import')) document.getElementById('navImport').style.display = 'none';
+  if (!Auth.can('admin'))  document.getElementById('navAdmin').style.display = 'none';
+
+  function toggleSidebar() { document.getElementById('sidebar').classList.toggle('mobile-open'); }
+
+  Chart.defaults.color = '#94a3b8';
+  Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+  Chart.defaults.font.family = "'JetBrains Mono', monospace";
+
+  let charts = {};
+  let activeThresh = 80;
+
+  // ── HELPERS: derive filtered data from plant selection ──
+
+  function getActivePlant() {
+    return document.getElementById('filterPlant')?.value || 'all';
+  }
+  function getActiveDate() {
+    return document.getElementById('filterDate')?.value || 'all';
+  }
+  function getActiveInverter() {
+    return document.getElementById('filterInverter')?.value || 'all';
+  }
+
+  // Returns the 7-day daily series for a given plant (or all-plants total)
+  function getDailyData(plant) {
+    if (plant === 'all') return PLANT_DATA.daily;
+    const rows = PLANT_DATA.plantDaily.filter(r => r.plant === plant);
+    // Use the 7 standard dates so the x-axis always aligns
+    return PLANT_DATA.daily.map(d => {
+      const r = rows.find(r => r.date === d.date);
+      return r ? { date: d.date, avg: r.avg, min: r.avg * 0.6, max: Math.min(1, r.avg * 1.1), count: r.count, std: 0 } : d;
+    });
+  }
+
+  // Returns inverter list for a given plant
+  function getInverterData(plant) {
+    if (plant === 'all') return PLANT_DATA.inverters;
+    return PLANT_DATA.plantInverters
+      .filter(r => r.plant === plant)
+      .map(r => ({ inverter: r.inverter, avg: r.avg, count: 0 }));
+  }
+
+  // ── INIT ──
+  function init() {
+    populatePlantFilter();
+    populateInverterFilter('all');
+    renderAll();
+    document.getElementById('alertBanner').style.display = 'flex';
+  }
+
+  function populatePlantFilter() {
+    const sel = document.getElementById('filterPlant');
+    // Sort plants
+    const plants = PLANT_DATA.plants;
+    plants.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.plant;
+      opt.textContent = `${p.plant}  (${(p.avg*100).toFixed(1)}% · ${p.panels} panels)`;
+      sel.appendChild(opt);
+    });
+  }
+
+  function populateInverterFilter(plant) {
+    const sel = document.getElementById('filterInverter');
+    sel.innerHTML = '<option value="all">All Inverters</option>';
+    const invs = getInverterData(plant);
+    invs.forEach(inv => {
+      const opt = document.createElement('option');
+      opt.value = inv.inverter;
+      opt.textContent = `${inv.inverter} (${(inv.avg*100).toFixed(1)}%)`;
+      sel.appendChild(opt);
+    });
+  }
+
+  function renderAll() {
+    const plant = getActivePlant();
+    renderKPIs(plant);
+    renderTrendChart(plant);
+    renderDistChart();
+    renderLowChart(plant);
+    renderInverterChart(plant);
+    renderHeatmap(plant);
+    renderAnomalyTable(plant);
+    updatePageHeader(plant);
+  }
+
+  function updatePageHeader(plant) {
+    const subtitle = document.getElementById('pageSubtitle');
+    const badge    = document.getElementById('pageBadge');
+    if (plant === 'all') {
+      subtitle.textContent = 'CMES Solar Plant — All 30 Plants · Performance Overview';
+      badge.innerHTML = `<span class="live-dot"></span> Mar 09–15, 2026 · 3,214 panels · 34 inverters`;
+    } else {
+      const info = PLANT_DATA.plants.find(p => p.plant === plant);
+      const invCount = PLANT_DATA.plantInverters.filter(r => r.plant === plant).length;
+      subtitle.textContent = `CMES Solar Plant — ${plant} · Performance Overview`;
+      badge.innerHTML = `<span class="live-dot"></span> Mar 09–15, 2026 · ${info?.panels || '?'} panels · ${invCount} inverters`;
+    }
+  }
+
+  // ── KPIs ──
+  function renderKPIs(plant) {
+    const daily = getDailyData(plant);
+    const invData = getInverterData(plant);
+
+    // Avg
+    const avg = (daily.reduce((s, d) => s + d.avg, 0) / daily.length * 100).toFixed(1);
+
+    // Trend slope
+    const avgs = daily.map(d => d.avg);
+    const n = avgs.length;
+    const xs = avgs.map((_, i) => i);
+    const xm = xs.reduce((a,b)=>a+b)/n, ym = avgs.reduce((a,b)=>a+b)/n;
+    const slope = ((xs.reduce((s,x,i)=>s+(x-xm)*(avgs[i]-ym),0)/xs.reduce((s,x)=>s+(x-xm)**2,0))*100).toFixed(2);
+
+    // Low performers (use plant-day data)
+    const lowCount = plant === 'all'
+      ? PLANT_DATA.lowPerformance.reduce((s, d) => s + d.low_count, 0)
+      : daily.reduce((s, d) => s + Math.round(d.count * Math.max(0, 0.8 - d.avg) / 0.8 * 1.5), 0);
+    const total = daily.reduce((s, d) => s + d.count, 0);
+    const anomRate = ((lowCount / total) * 100).toFixed(1);
+
+    // Best / worst inverter
+    const best  = invData.reduce((a, b) => a.avg > b.avg ? a : b, invData[0] || {inverter:'—',avg:0});
+    const worst = invData.reduce((a, b) => a.avg < b.avg ? a : b, invData[0] || {inverter:'—',avg:1});
+
+    document.getElementById('kpiAvg').innerHTML  = `${avg}<span class="card-unit">%</span>`;
+    document.getElementById('kpiLow').textContent = lowCount.toLocaleString();
+    document.getElementById('kpiLowSub').textContent = `Anomaly rate: ${anomRate}%`;
+    document.getElementById('kpiTrend').innerHTML = `${slope > 0 ? '+' : ''}${slope}<span class="card-unit">%/d</span>`;
+    document.getElementById('kpiBest').textContent  = best.inverter;
+    document.getElementById('kpiBestSub').textContent  = `Avg: ${(best.avg*100).toFixed(1)}%`;
+    document.getElementById('kpiWorst').textContent = worst.inverter;
+    document.getElementById('kpiWorstSub').textContent = `Avg: ${(worst.avg*100).toFixed(1)}%`;
+
+    const s = parseFloat(slope);
+    document.getElementById('trendChip').innerHTML = s < -1
+      ? `<span class="trend-chip trend-down">↘ ${slope}%/d</span>`
+      : s > 0
+      ? `<span class="trend-chip trend-up">↗ +${slope}%/d</span>`
+      : `<span class="trend-chip trend-flat">→ Stable</span>`;
+  }
+
+  // ── TREND CHART ──
+  function renderTrendChart(plant) {
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    if (charts.trend) charts.trend.destroy();
+
+    if (plant === 'all') {
+      // Multi-plant overlay: show top 5 plants by panel count as separate lines
+      const topPlants = PLANT_DATA.plants.slice().sort((a,b) => b.panels - a.panels).slice(0, 5);
+      const dates = PLANT_DATA.daily.map(d => d.date.slice(5));
+      const COLORS = ['#22d3ee','#4ade80','#fbbf24','#f87171','#a78bfa'];
+      const datasets = topPlants.map((p, i) => {
+        const rows = PLANT_DATA.plantDaily.filter(r => r.plant === p.plant);
+        return {
+          label: p.plant,
+          data: PLANT_DATA.daily.map(d => { const r = rows.find(r => r.date === d.date); return r ? +(r.avg*100).toFixed(1) : null; }),
+          borderColor: COLORS[i], borderWidth: 2, pointRadius: 3,
+          fill: false, tension: 0.4
+        };
+      });
+      // Threshold
+      datasets.push({ label: 'Threshold (80%)', data: dates.map(() => 80), borderColor: 'rgba(251,191,36,0.4)', borderDash: [6,3], borderWidth: 1.5, pointRadius: 0, fill: false });
+      charts.trend = new Chart(ctx, {
+        type: 'line',
+        data: { labels: dates, datasets },
+        options: {
+          responsive: true, animation: { duration: 500 },
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 10, font: { size: 11 } } }, tooltip: { mode: 'index', intersect: false } },
+          scales: {
+            y: { min: 0, max: 105, ticks: { callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            x: { grid: { display: false } }
+          }
+        }
+      });
+    } else {
+      // Single plant: avg trend with threshold
+      const data = getDailyData(plant);
+      charts.trend = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.map(d => d.date.slice(5)),
+          datasets: [
+            { label: 'Average', data: data.map(d => +(d.avg*100).toFixed(1)), borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.1)', borderWidth: 2.5, pointRadius: 4, pointBackgroundColor: '#22d3ee', fill: true, tension: 0.4 },
+            { label: 'Threshold (80%)', data: data.map(() => 80), borderColor: 'rgba(251,191,36,0.5)', borderDash: [6,3], borderWidth: 1.5, pointRadius: 0, fill: false }
+          ]
+        },
+        options: {
+          responsive: true, animation: { duration: 500 },
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 10 } }, tooltip: { mode: 'index', intersect: false } },
+          scales: {
+            y: { min: 0, max: 105, ticks: { callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            x: { grid: { display: false } }
+          }
+        }
+      });
+    }
+  }
+
+  // ── DIST CHART (static — full dataset) ──
+  function renderDistChart() {
+    const ctx = document.getElementById('distChart').getContext('2d');
+    if (charts.dist) charts.dist.destroy();
+    const data = PLANT_DATA.distribution;
+    charts.dist = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: data.map(d => d.bucket),
+        datasets: [{ label: 'Panels', data: data.map(d => d.count), backgroundColor: data.map(d => d.color + 'cc'), borderColor: data.map(d => d.color), borderWidth: 1, borderRadius: 4 }]
+      },
+      options: {
+        responsive: true, animation: { duration: 500 },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.raw.toLocaleString()} panels` } } },
+        scales: { y: { ticks: { callback: v => v.toLocaleString() }, grid: { color: 'rgba(255,255,255,0.04)' } }, x: { grid: { display: false } } }
+      }
+    });
+  }
+
+  // ── LOW PERFORMERS CHART ──
+  function renderLowChart(plant) {
+    const ctx = document.getElementById('lowChart').getContext('2d');
+    if (charts.low) charts.low.destroy();
+
+    let data, label;
+    if (plant === 'all') {
+      data  = PLANT_DATA.lowPerformance.map(d => ({ date: d.date.slice(5), val: d.low_count }));
+      label = 'Low Performers (<80%)';
+    } else {
+      const daily = getDailyData(plant);
+      data  = daily.map(d => ({ date: d.date.slice(5), val: Math.round(d.count * Math.max(0, 0.8 - d.avg) / 0.8 * 1.5) }));
+      label = `${plant} Low Performers`;
+    }
+
+    charts.low = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: data.map(d => d.date),
+        datasets: [{ label, data: data.map(d => d.val), backgroundColor: data.map(d => d.val > 500 ? 'rgba(239,68,68,0.7)' : d.val > 200 ? 'rgba(251,191,36,0.7)' : 'rgba(34,211,238,0.7)'), borderRadius: 4 }]
+      },
+      options: {
+        responsive: true, animation: { duration: 500 },
+        plugins: { legend: { display: false } },
+        scales: { y: { ticks: { callback: v => v.toLocaleString() }, grid: { color: 'rgba(255,255,255,0.04)' } }, x: { grid: { display: false } } }
+      }
+    });
+  }
+
+  // ── INVERTER CHART ──
+  function renderInverterChart(plant) {
+    const ctx = document.getElementById('invChart').getContext('2d');
+    if (charts.inv) charts.inv.destroy();
+
+    // When "all", show plants instead of inverters
+    let labels, vals, title;
+    if (plant === 'all') {
+      const plants = PLANT_DATA.plants;
+      labels = plants.map(p => p.plant);
+      vals   = plants.map(p => +(p.avg*100).toFixed(1));
+      title  = 'Plant Avg Performance';
+    } else {
+      const invs = getInverterData(plant);
+      labels = invs.map(i => i.inverter);
+      vals   = invs.map(i => +(i.avg*100).toFixed(1));
+      title  = `${plant} Inverter Performance`;
+    }
+
+    // Update chart title label
+    document.querySelector('#invChart').closest('.chart-container').querySelector('.chart-title').textContent =
+      plant === 'all' ? 'Plant Performance Ranking' : 'Inverter Performance';
+    document.querySelector('#invChart').closest('.chart-container').querySelector('.chart-subtitle').textContent =
+      plant === 'all' ? 'Weekly average — all 30 plants' : `${plant} · weekly avg by inverter`;
+
+    charts.inv = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ label: title, data: vals, backgroundColor: vals.map(v => v >= 88 ? 'rgba(34,197,94,0.6)' : v >= 80 ? 'rgba(34,211,238,0.6)' : v >= 60 ? 'rgba(251,191,36,0.6)' : 'rgba(239,68,68,0.6)'), borderRadius: 2 }]
+      },
+      options: {
+        responsive: true, animation: { duration: 500 },
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          y: { grid: { display: false }, ticks: { font: { size: 10 } } }
+        }
+      }
+    });
+  }
+
+  // ── HEATMAP ──
+  function renderHeatmap(plant) {
+    const container = document.getElementById('heatmapContainer');
+
+    if (plant === 'all') {
+      // Rows = plants, cols = dates
+      const dates = PLANT_DATA.daily.map(d => d.date);
+      const plants = PLANT_DATA.plants.map(p => p.plant);
+      let html = '<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:11px;">';
+      html += '<tr><th style="padding:4px 8px;color:var(--text-muted);text-align:left;font-size:10px;white-space:nowrap;">PLANT \\ DATE</th>';
+      dates.forEach(d => html += `<th style="padding:4px 8px;color:var(--text-muted);font-family:var(--font-mono);font-size:10px;">${d.slice(5)}</th>`);
+      html += '</tr>';
+      plants.forEach(pl => {
+        html += `<tr><td style="padding:4px 8px;font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);white-space:nowrap;">${pl}</td>`;
+        dates.forEach(date => {
+          const r = PLANT_DATA.plantDaily.find(x => x.plant === pl && x.date === date);
+          const val = r ? r.avg : null;
+          if (val === null) { html += `<td style="padding:2px;"><div style="width:32px;height:22px;border-radius:3px;background:var(--navy-700);"></div></td>`; return; }
+          const pct = val * 100;
+          const color = pct >= 90 ? '#22c55e' : pct >= 80 ? '#06b6d4' : pct >= 60 ? '#f59e0b' : '#ef4444';
+          html += `<td style="padding:2px;" title="${pl} · ${date} · ${pct.toFixed(1)}%"><div style="width:32px;height:22px;border-radius:3px;background:${color};opacity:${Math.max(0.2,val)};cursor:default;" onmouseenter="this.style.outline='2px solid white'" onmouseleave="this.style.outline='none'"></div></td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</table></div>';
+      container.innerHTML = html;
+    } else {
+      // Original inverter × date heatmap scoped to plant
+      const invs = [...new Set(PLANT_DATA.plantInverters.filter(r => r.plant === plant).map(r => r.inverter))].sort((a,b) => parseInt(a.slice(1))-parseInt(b.slice(1)));
+      const dates = PLANT_DATA.daily.map(d => d.date);
+      let html = '<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:11px;">';
+      html += '<tr><th style="padding:4px 8px;color:var(--text-muted);text-align:left;font-size:10px;">INV \\ DATE</th>';
+      dates.forEach(d => html += `<th style="padding:4px 6px;color:var(--text-muted);font-family:var(--font-mono);font-size:10px;">${d.slice(5)}</th>`);
+      html += '</tr>';
+      invs.forEach(inv => {
+        html += `<tr><td style="padding:4px 8px;font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);white-space:nowrap;">${inv}</td>`;
+        dates.forEach(date => {
+          const cell = PLANT_DATA.heatmap.find(h => h.date === date && h.inverter === inv);
+          const val = cell ? cell.avg : null;
+          if (!val && val !== 0) { html += `<td style="padding:2px;"><div style="width:28px;height:24px;border-radius:3px;background:var(--navy-700);"></div></td>`; return; }
+          const pct = val * 100;
+          const color = pct >= 90 ? '#22c55e' : pct >= 80 ? '#06b6d4' : pct >= 70 ? '#f59e0b' : '#ef4444';
+          html += `<td style="padding:2px;" title="${inv} · ${date} · ${pct.toFixed(1)}%"><div style="width:28px;height:24px;border-radius:3px;background:${color};opacity:${Math.max(0.2,val)};cursor:default;" onmouseenter="this.style.outline='2px solid white'" onmouseleave="this.style.outline='none'"></div></td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</table></div>';
+      container.innerHTML = html;
+    }
+  }
+
+  // ── ANOMALY TABLE ──
+  function renderAnomalyTable(plant) {
+    const tbody = document.getElementById('anomalyTbody');
+    tbody.innerHTML = '';
+    // Filter worst panels to the selected plant
+    const panels = plant === 'all'
+      ? PLANT_DATA.worstPanels
+      : PLANT_DATA.worstPanels.filter(p => p.panel.includes(plant));
+
+    if (panels.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:1.5rem;">No critical panels for ${plant}</td></tr>`;
+      return;
+    }
+    panels.forEach((panel, i) => {
+      const pct = (panel.avg_perf * 100).toFixed(1);
+      const inv = panel.panel.match(/I\d+/)?.[0] || '—';
+      const mod = panel.panel.match(/M\d+/)?.[0] || '—';
+      const barColor = pct < 10 ? '#ef4444' : pct < 20 ? '#f97316' : '#eab308';
+      const statusClass = pct < 10 ? 'pill-bad' : 'pill-warn';
+      const statusText  = pct < 10 ? 'Critical' : pct < 20 ? 'Severe' : 'Warning';
+      tbody.innerHTML += `<tr>
+        <td>${i+1}</td>
+        <td style="color:var(--text-primary)">${panel.panel}</td>
+        <td><span class="pill pill-info">${inv}</span></td>
+        <td style="color:var(--text-muted)">${mod}</td>
+        <td>
+          <div class="perf-bar-wrap">
+            <div class="perf-bar-bg"><div class="perf-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+            <span class="perf-val" style="color:${barColor}">${pct}%</span>
+          </div>
+        </td>
+        <td><span class="pill ${statusClass}">${statusText}</span></td>
+      </tr>`;
+    });
+  }
+
+  // ── FILTER HANDLERS ──
+  function updateThresh(val) {
+    activeThresh = parseInt(val);
+    document.getElementById('threshDisplay').textContent = `≥ ${val}%`;
+  }
+
+  function applyFilters() {
+    const plant = getActivePlant();
+    // When plant changes, refresh inverter dropdown and repopulate
+    populateInverterFilter(plant);
+    renderAll();
+  }
+
+  function resetFilters() {
+    document.getElementById('filterPlant').value    = 'all';
+    document.getElementById('filterDate').value     = 'all';
+    document.getElementById('filterInverter').value = 'all';
+    document.getElementById('filterThresh').value   = 80;
+    updateThresh(80);
+    populateInverterFilter('all');
+    renderAll();
+  }
+
+  // ── EXPORT ──
+  function exportCSV() {
+    const plant = getActivePlant();
+    const daily = getDailyData(plant);
+    let csv = `Plant,Date,Avg Performance (%),Panel Count\n`;
+    daily.forEach(d => {
+      csv += `${plant === 'all' ? 'ALL' : plant},${d.date},${(d.avg*100).toFixed(2)},${d.count}\n`;
+    });
+    const blob = new Blob([csv], {type:'text/csv'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `cmes_${plant === 'all' ? 'all_plants' : plant}_performance.csv`; a.click();
+  }
+
+  init();
+</script>
+</body>
+</html>

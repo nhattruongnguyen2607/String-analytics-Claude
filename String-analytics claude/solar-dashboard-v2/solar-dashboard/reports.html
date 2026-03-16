@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports — CMES Solar Plant</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <style>
+    .report-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+    .report-section { display: none; }
+    .report-section.active { display: block; }
+
+    .report-card {
+      background: var(--navy-800);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+    .summary-item {
+      background: var(--navy-700);
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+      text-align: center;
+    }
+    .summary-item-val {
+      font-family: var(--font-mono);
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--cyan-400);
+    }
+    .summary-item-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .insight-list { list-style: none; }
+    .insight-list li {
+      padding: 0.75rem 0;
+      border-top: 1px solid var(--border);
+      font-size: 13.5px;
+      color: var(--text-secondary);
+      display: flex;
+      gap: 0.625rem;
+      align-items: flex-start;
+    }
+    .insight-list li:first-child { border-top: none; }
+
+    .schedule-item {
+      background: var(--navy-700);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .schedule-info { flex: 1; }
+    .schedule-name { font-weight: 600; font-size: 14px; }
+    .schedule-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  <header class="topbar">
+    <div class="topbar-logo">
+      <div class="logo-icon">☀️</div>
+      <div class="logo-text">CMES<span>Solar</span></div>
+    </div>
+    <button class="hamburger" onclick="toggleSidebar()">☰</button>
+    <div class="topbar-center"><div class="topbar-title">Reports</div></div>
+    <div class="topbar-right" id="userBadge"></div>
+  </header>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-section-title">Navigation</div>
+    <a href="dashboard.html" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+    <a href="reports.html"   class="nav-item active"><span class="nav-icon">📋</span> Reports</a>
+    <a href="import.html"    class="nav-item" id="navImport"><span class="nav-icon">📥</span> Data Import</a>
+    <a href="admin.html"     class="nav-item" id="navAdmin"><span class="nav-icon">⚙️</span> Admin</a>
+
+    <div class="sidebar-filters">
+      <div class="sidebar-section-title" style="padding:0;margin-bottom:0.75rem;">Report Options</div>
+      <label class="filter-label">Report Period</label>
+      <select class="filter-select" id="reportPeriod">
+        <option value="weekly">Weekly (Mar 09–15)</option>
+        <option value="monthly">Monthly (Mar 2026)</option>
+      </select>
+      <label class="filter-label">Include Sections</label>
+      <label style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;font-size:13px;color:var(--text-secondary);">
+        <input type="checkbox" checked id="inclSummary"> Summary KPIs
+      </label>
+      <label style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;font-size:13px;color:var(--text-secondary);">
+        <input type="checkbox" checked id="inclCharts"> Charts
+      </label>
+      <label style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;font-size:13px;color:var(--text-secondary);">
+        <input type="checkbox" checked id="inclAnomalies"> Anomalies
+      </label>
+      <label style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.75rem;font-size:13px;color:var(--text-secondary);">
+        <input type="checkbox" checked id="inclInsights"> AI Insights
+      </label>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header fade-in">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+        <div>
+          <h1 class="page-title">Performance Reports</h1>
+          <p class="page-subtitle">Weekly &amp; monthly summaries with export capabilities</p>
+        </div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <button class="btn btn-secondary" onclick="exportExcel()">📊 Export Excel</button>
+          <button class="btn btn-amber" onclick="exportPDF()">📄 Export PDF</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs fade-in">
+      <button class="tab active" onclick="switchTab('weekly', this)">Weekly Report</button>
+      <button class="tab" onclick="switchTab('monthly', this)">Monthly Report</button>
+      <button class="tab" onclick="switchTab('schedule', this)">Schedules</button>
+    </div>
+
+    <!-- WEEKLY REPORT -->
+    <div class="report-section active" id="tabWeekly">
+      <div class="report-card fade-in">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;">
+          <div>
+            <h2 style="font-family:var(--font-display);font-size:22px;font-weight:800;letter-spacing:-0.02em;">
+              Weekly Performance Report
+            </h2>
+            <p style="color:var(--text-muted);font-size:13px;margin-top:4px;">
+              CMES Solar Plant · Mar 09–15, 2026 · Generated: Mar 16, 2026
+            </p>
+          </div>
+          <span class="pill pill-info">Week 11 · 2026</span>
+        </div>
+
+        <div class="summary-grid" id="weeklySummary"></div>
+
+        <h3 style="font-family:var(--font-display);font-size:15px;font-weight:700;margin-bottom:1rem;">Daily Performance</h3>
+        <div class="data-table-wrap">
+          <table class="data-table" id="weeklyTable">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Avg Performance</th>
+                <th>Min</th>
+                <th>Max</th>
+                <th>Std Dev</th>
+                <th>Low Performers</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="weeklyTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="report-card fade-in fade-in-delay-1">
+        <h3 style="font-family:var(--font-display);font-size:15px;font-weight:700;margin-bottom:1rem;">Trend Chart</h3>
+        <canvas id="reportTrendChart" height="100"></canvas>
+      </div>
+
+      <div class="report-card fade-in fade-in-delay-2">
+        <h3 style="font-family:var(--font-display);font-size:15px;font-weight:700;margin-bottom:0.75rem;">
+          🔍 Automated Insights
+        </h3>
+        <ul class="insight-list" id="insightList"></ul>
+      </div>
+
+      <div class="report-card fade-in fade-in-delay-3">
+        <h3 style="font-family:var(--font-display);font-size:15px;font-weight:700;margin-bottom:1rem;">
+          ⚠ Anomaly Summary
+        </h3>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th>Panel ID</th><th>Avg Performance</th><th>Severity</th><th>Recommended Action</th></tr>
+            </thead>
+            <tbody id="reportAnomalyTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- MONTHLY REPORT -->
+    <div class="report-section" id="tabMonthly">
+      <div class="report-card">
+        <h2 style="font-family:var(--font-display);font-size:22px;font-weight:800;letter-spacing:-0.02em;">
+          Monthly Performance Report
+        </h2>
+        <p style="color:var(--text-muted);font-size:13px;margin-top:4px;">
+          CMES Solar Plant · March 2026 · Partial data (Mar 09–15)
+        </p>
+        <div class="alert alert-info" style="margin-top:1.5rem;">
+          ℹ Full monthly report will be available once March data is complete. Showing partial week data.
+        </div>
+        <div class="summary-grid" id="monthlySummary"></div>
+      </div>
+      <div class="report-card">
+        <h3 style="font-family:var(--font-display);font-size:15px;font-weight:700;margin-bottom:1rem;">Inverter Monthly Performance</h3>
+        <canvas id="monthlyInvChart" height="120"></canvas>
+      </div>
+    </div>
+
+    <!-- SCHEDULE -->
+    <div class="report-section" id="tabSchedule">
+      <div class="report-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
+          <div>
+            <h2 style="font-family:var(--font-display);font-size:18px;font-weight:700;">Automated Report Schedules</h2>
+            <p style="color:var(--text-muted);font-size:13px;margin-top:4px;">Configure automatic report generation and delivery</p>
+          </div>
+          <button class="btn btn-primary" onclick="addSchedule()">+ Add Schedule</button>
+        </div>
+        <div id="scheduleList"></div>
+        <div class="alert alert-info" style="margin-top:1rem;">
+          ℹ Scheduled reports are generated client-side and sent via email integration. Configure your SMTP settings in Admin → Settings.
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/auth.js"></script>
+<script src="assets/data.js"></script>
+<script>
+  const session = Auth.requireAuth();
+  Auth.requirePermission('reports');
+  renderUserBadge('userBadge');
+  if (!Auth.can('import')) document.getElementById('navImport').style.display = 'none';
+  if (!Auth.can('admin'))  document.getElementById('navAdmin').style.display = 'none';
+
+  Chart.defaults.color = '#94a3b8';
+  Chart.defaults.font.family = "'JetBrains Mono', monospace";
+
+  function toggleSidebar() { document.getElementById('sidebar').classList.toggle('mobile-open'); }
+
+  function switchTab(name, btn) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.report-section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+    if (name === 'monthly') renderMonthlyChart();
+    if (name === 'schedule') renderSchedules();
+  }
+
+  function init() {
+    renderWeeklySummary();
+    renderWeeklyTable();
+    renderReportTrendChart();
+    renderInsights();
+    renderReportAnomalies();
+  }
+
+  function renderWeeklySummary() {
+    const items = [
+      { val: KPI.weeklyAvgPerformance() + '%', label: 'Avg Performance' },
+      { val: '3,214', label: 'Active Panels' },
+      { val: '34', label: 'Inverters' },
+      { val: KPI.totalLowPerformers().toLocaleString(), label: 'Low Performers' },
+      { val: KPI.anomalyRate() + '%', label: 'Anomaly Rate' },
+      { val: '7', label: 'Days Recorded' }
+    ];
+    document.getElementById('weeklySummary').innerHTML = items.map(i =>
+      `<div class="summary-item"><div class="summary-item-val">${i.val}</div><div class="summary-item-label">${i.label}</div></div>`
+    ).join('');
+
+    document.getElementById('monthlySummary').innerHTML = items.map(i =>
+      `<div class="summary-item"><div class="summary-item-val">${i.val}</div><div class="summary-item-label">${i.label}</div></div>`
+    ).join('');
+  }
+
+  function renderWeeklyTable() {
+    const tbody = document.getElementById('weeklyTbody');
+    tbody.innerHTML = '';
+    PLANT_DATA.daily.forEach((d, i) => {
+      const pct = (d.avg*100).toFixed(1);
+      const low = PLANT_DATA.lowPerformance[i]?.low_count || 0;
+      const status = pct >= 85 ? ['pill-good','Normal'] : pct >= 70 ? ['pill-warn','Low'] : ['pill-bad','Critical'];
+      tbody.innerHTML += `<tr>
+        <td>${d.date}</td>
+        <td style="color:var(--cyan-400)">${pct}%</td>
+        <td>${(d.min*100).toFixed(1)}%</td>
+        <td>${(d.max*100).toFixed(1)}%</td>
+        <td>${(d.std*100).toFixed(2)}%</td>
+        <td style="color:${low > 1000 ? 'var(--red-400)' : low > 700 ? 'var(--amber-400)' : 'var(--text-secondary)'}">${low.toLocaleString()}</td>
+        <td><span class="pill ${status[0]}">${status[1]}</span></td>
+      </tr>`;
+    });
+  }
+
+  function renderReportTrendChart() {
+    const ctx = document.getElementById('reportTrendChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: PLANT_DATA.daily.map(d => d.date),
+        datasets: [
+          { label: 'Average', data: PLANT_DATA.daily.map(d => +(d.avg*100).toFixed(1)), borderColor: '#22d3ee', borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: '#22d3ee', fill: true, backgroundColor: 'rgba(34,211,238,0.07)', tension: 0.4 },
+          { label: 'Threshold', data: PLANT_DATA.daily.map(() => 80), borderColor: 'rgba(251,191,36,0.5)', borderDash: [6,3], borderWidth: 1.5, pointRadius: 0 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom' } },
+        scales: {
+          y: { min: 50, max: 100, ticks: { callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  function renderInsights() {
+    const slope = parseFloat(KPI.trendSlope());
+    const insights = [
+      { icon: '📉', text: `<strong>Declining trend detected:</strong> Average performance dropped ${Math.abs(slope).toFixed(2)}%/day over the 7-day period, with a sharp decline on March 15 (avg 60.2%). Strongly recommend investigating grid supply or weather conditions on that date.` },
+      { icon: '⚡', text: `<strong>Inverter I19 and I08 underperforming:</strong> Consistently below 80% average across all 7 days. I19 avg: 75.3%, I08 avg: 75.8%. Schedule maintenance inspection.` },
+      { icon: '✅', text: `<strong>Inverter I20 top performer:</strong> Consistently above 90% (avg: 91.3%). This cluster may have optimal orientation or better shading conditions — use as reference.` },
+      { icon: '🔴', text: `<strong>20 critical panels identified:</strong> Panels in CMES-PR045 (I07, I08) show near-zero performance (< 5% avg). Likely hardware failure. Immediate inspection recommended.` },
+      { icon: '📊', text: `<strong>Overall efficiency:</strong> 80.88% weekly average across 3,214 panels. Standard deviation of 19.9% indicates high variability — particularly on March 15 (std: 33.4%).` },
+      { icon: '🌤', text: `<strong>Possible weather event:</strong> March 15 shows system-wide performance drop to 60.2% — unlike individual panel failures, this affects all inverters, suggesting irradiance reduction or cloud cover.` }
+    ];
+    document.getElementById('insightList').innerHTML = insights.map(ins =>
+      `<li><span style="font-size:18px;flex-shrink:0;">${ins.icon}</span><span>${ins.text}</span></li>`
+    ).join('');
+  }
+
+  function renderReportAnomalies() {
+    const tbody = document.getElementById('reportAnomalyTbody');
+    tbody.innerHTML = '';
+    PLANT_DATA.worstPanels.slice(0, 10).forEach(panel => {
+      const pct = (panel.avg_perf*100).toFixed(1);
+      const sev = pct < 5 ? ['pill-bad','Critical'] : pct < 15 ? ['pill-bad','Severe'] : ['pill-warn','Warning'];
+      const action = pct < 5 ? 'Immediate hardware inspection' : pct < 15 ? 'Schedule maintenance within 48h' : 'Monitor closely — inspect this week';
+      tbody.innerHTML += `<tr>
+        <td style="font-size:11px;color:var(--text-primary)">${panel.panel}</td>
+        <td style="color:var(--red-400)">${pct}%</td>
+        <td><span class="pill ${sev[0]}">${sev[1]}</span></td>
+        <td style="font-size:12px;color:var(--text-muted)">${action}</td>
+      </tr>`;
+    });
+  }
+
+  function renderMonthlyChart() {
+    const ctx = document.getElementById('monthlyInvChart').getContext('2d');
+    if (window._monthlyChart) window._monthlyChart.destroy();
+    window._monthlyChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: PLANT_DATA.inverters.map(i => i.inverter),
+        datasets: [{
+          label: 'Monthly Avg Performance',
+          data: PLANT_DATA.inverters.map(i => +(i.avg*100).toFixed(1)),
+          backgroundColor: PLANT_DATA.inverters.map(i => i.avg >= 0.88 ? 'rgba(34,197,94,0.6)' : i.avg >= 0.80 ? 'rgba(34,211,238,0.6)' : 'rgba(251,191,36,0.6)'),
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { min: 60, max: 100, ticks: { callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+        }
+      }
+    });
+  }
+
+  const defaultSchedules = [
+    { id: 1, name: 'Weekly Summary', freq: 'Every Monday 08:00', recipients: 'manager@cmes.com', type: 'PDF + Excel', active: true },
+    { id: 2, name: 'Monthly Report', freq: '1st of each month 09:00', recipients: 'admin@cmes.com, manager@cmes.com', type: 'PDF', active: true },
+    { id: 3, name: 'Anomaly Alert', freq: 'Daily if anomalies > 20%', recipients: 'admin@cmes.com', type: 'Email only', active: false }
+  ];
+
+  function renderSchedules() {
+    const container = document.getElementById('scheduleList');
+    container.innerHTML = defaultSchedules.map(s => `
+      <div class="schedule-item">
+        <div class="schedule-info">
+          <div class="schedule-name">${s.name}</div>
+          <div class="schedule-meta">🕐 ${s.freq} · 📧 ${s.recipients} · 📄 ${s.type}</div>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+          <span class="pill ${s.active ? 'pill-good' : 'pill-warn'}">${s.active ? 'Active' : 'Paused'}</span>
+          <button class="btn btn-secondary btn-sm" onclick="toggleSchedule(${s.id})">${s.active ? 'Pause' : 'Enable'}</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteSchedule(${s.id})">Delete</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function toggleSchedule(id) {
+    const s = defaultSchedules.find(x => x.id === id);
+    if (s) { s.active = !s.active; renderSchedules(); }
+  }
+  function deleteSchedule(id) {
+    const idx = defaultSchedules.findIndex(x => x.id === id);
+    if (idx >= 0) { defaultSchedules.splice(idx, 1); renderSchedules(); }
+  }
+  function addSchedule() {
+    defaultSchedules.push({ id: Date.now(), name: 'New Schedule', freq: 'Daily 08:00', recipients: session.email, type: 'PDF', active: false });
+    renderSchedules();
+  }
+
+  // ── EXPORT EXCEL ──
+  function exportExcel() {
+    const wb = XLSX.utils.book_new();
+
+    // Daily summary sheet
+    const dailyData = [['Date','Avg Performance (%)','Min (%)','Max (%)','Std Dev (%)','Low Performers']];
+    PLANT_DATA.daily.forEach((d, i) => {
+      dailyData.push([d.date, +(d.avg*100).toFixed(2), +(d.min*100).toFixed(2), +(d.max*100).toFixed(2), +(d.std*100).toFixed(2), PLANT_DATA.lowPerformance[i]?.low_count || 0]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dailyData), 'Daily Summary');
+
+    // Inverter sheet
+    const invData = [['Inverter','Avg Performance (%)','Panel Count']];
+    PLANT_DATA.inverters.forEach(inv => {
+      invData.push([inv.inverter, +(inv.avg*100).toFixed(2), inv.count]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(invData), 'Inverter Performance');
+
+    // Anomalies sheet
+    const anomData = [['Panel ID','Avg Performance (%)','Severity','Recommended Action']];
+    PLANT_DATA.worstPanels.forEach(p => {
+      const pct = +(p.avg_perf*100).toFixed(2);
+      anomData.push([p.panel, pct, pct < 5 ? 'Critical' : pct < 15 ? 'Severe' : 'Warning', pct < 5 ? 'Immediate inspection' : 'Schedule maintenance']);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(anomData), 'Anomalies');
+
+    XLSX.writeFile(wb, `CMES_Plant_Report_${new Date().toISOString().slice(0,10)}.xlsx`);
+  }
+
+  // ── EXPORT PDF ──
+  function exportPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    // Header
+    doc.setFillColor(10, 15, 30);
+    doc.rect(0, 0, 210, 40, 'F');
+    doc.setTextColor(34, 211, 238);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CMES Solar Plant', 15, 18);
+    doc.setFontSize(11);
+    doc.setTextColor(148, 163, 184);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Weekly Performance Report · Mar 09–15, 2026', 15, 26);
+    doc.text(`Generated: ${new Date().toLocaleDateString()} by ${session.name}`, 15, 33);
+
+    // KPI Summary
+    let y = 50;
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Executive Summary', 15, y); y += 6;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60, 60, 80);
+    doc.text(`Weekly Average Performance: ${KPI.weeklyAvgPerformance()}%`, 15, y); y += 5;
+    doc.text(`Total Low Performers (<80%): ${KPI.totalLowPerformers().toLocaleString()} panel-days`, 15, y); y += 5;
+    doc.text(`Anomaly Rate: ${KPI.anomalyRate()}%`, 15, y); y += 5;
+    doc.text(`Best Inverter: ${KPI.bestInverter().inverter} (${KPI.bestInverter().avg}%)`, 15, y); y += 5;
+    doc.text(`Performance Trend: ${KPI.trendSlope()}%/day (declining)`, 15, y); y += 10;
+
+    // Daily table
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0,0,0);
+    doc.setFontSize(11);
+    doc.text('Daily Performance Summary', 15, y); y += 4;
+
+    doc.autoTable({
+      startY: y,
+      head: [['Date','Avg %','Min %','Max %','Std Dev','Low Perf.','Status']],
+      body: PLANT_DATA.daily.map((d, i) => {
+        const pct = (d.avg*100).toFixed(1);
+        return [d.date, pct+'%', (d.min*100).toFixed(1)+'%', (d.max*100).toFixed(1)+'%', (d.std*100).toFixed(2)+'%', PLANT_DATA.lowPerformance[i]?.low_count || 0, pct >= 85 ? 'Normal' : pct >= 70 ? 'Low' : 'Critical'];
+      }),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [10,15,30], textColor: [148,163,184] },
+      alternateRowStyles: { fillColor: [245,247,250] }
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+
+    // Anomalies
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Critical Panels Requiring Inspection', 15, y); y += 4;
+
+    doc.autoTable({
+      startY: y,
+      head: [['Panel ID','Avg Perf.','Severity','Action Required']],
+      body: PLANT_DATA.worstPanels.slice(0,10).map(p => {
+        const pct = (p.avg_perf*100).toFixed(1);
+        return [p.panel, pct+'%', pct < 5 ? 'Critical' : pct < 15 ? 'Severe' : 'Warning', pct < 5 ? 'Immediate' : 'This week'];
+      }),
+      styles: { fontSize: 7.5 },
+      headStyles: { fillColor: [239,68,68], textColor: [255,255,255] },
+    });
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(`CMES Solar Performance Report · Page ${i} of ${pageCount} · Confidential`, 15, 290);
+    }
+
+    doc.save(`CMES_Report_${new Date().toISOString().slice(0,10)}.pdf`);
+  }
+
+  init();
+</script>
+</body>
+</html>
